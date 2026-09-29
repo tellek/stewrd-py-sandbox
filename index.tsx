@@ -321,6 +321,7 @@ export function Component({ api }: { api: PluginApi }) {
             justifyContent: "center",
             gap: 12,
             color: palette.text,
+            zIndex: 11, // above the Blanket (10) so the spinner and text stay undimmed
             pointerEvents: "none",
           }}
         >
