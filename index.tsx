@@ -73,7 +73,9 @@ export function Component({ api }: { api: PluginApi }) {
   const [installed, setInstalled] = useState<string[]>([]);
   const [root, setRoot] = useState("");
   const [parent, setParent] = useState("");
-  const [busy, setBusy] = useState(false);
+  // Non-null while a create or delete runs; the text is shown over a darkened pane.
+  const [busyText, setBusyText] = useState<string | null>(null);
+  const busy = busyText !== null;
   const envsRef = useRef<Env[]>([]);
 
   useEffect(() => api.theme.subscribe(setPalette), [api]);
@@ -156,7 +158,7 @@ export function Component({ api }: { api: PluginApi }) {
       await api.modal.error({ title: "Invalid Image", message: "Enter a Docker image such as python:3.12-slim." });
       return;
     }
-    setBusy(true);
+    setBusyText(docker ? "Creating Docker Environment, Please Wait..." : "Creating Environment, Please Wait...");
     try {
       // Never build into (and later delete) a folder that already exists.
       if (await exists(dir)) throw new Error(`${dir} already exists.`);
@@ -187,7 +189,7 @@ export function Component({ api }: { api: PluginApi }) {
       if (envsRef.current.some((e) => e.name === envName)) setStatus(envName, "error");
       await api.modal.error({ title: "Create Failed", message: String(err instanceof Error ? err.message : err) });
     } finally {
-      setBusy(false);
+      setBusyText(null);
     }
   };
 
@@ -209,7 +211,7 @@ export function Component({ api }: { api: PluginApi }) {
       confirmLabel: "Delete Environment",
     });
     if (!ok) return;
-    setBusy(true);
+    setBusyText("Deleting Environment, Please Wait...");
     try {
       if (env.kind === "docker") await run(dockerRemoveCommand(env.name));
       const c = rmdirCommand(env.dir, env.name);
@@ -223,15 +225,15 @@ export function Component({ api }: { api: PluginApi }) {
     } catch (err) {
       await api.modal.error({ title: "Delete Failed", message: String(err instanceof Error ? err.message : err) });
     } finally {
-      setBusy(false);
+      setBusyText(null);
     }
   };
 
   const labelText: CSSProperties = { color: palette.textMuted };
 
   return (
+    <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
     <div style={{ flex: 1, minHeight: 0, overflow: "auto", ...scrollbarStyle(palette) }}>
-      <h2>Py Sandbox</h2>
       {envs.length === 0 && <p style={{ color: palette.textMuted }}>No environments yet. Create one below.</p>}
       {envs.map((e) => (
         <div
@@ -305,6 +307,28 @@ export function Component({ api }: { api: PluginApi }) {
       <div style={{ marginTop: 12 }}>
         <api.ui.TextButton label="Create Environment" variant="primary" disabled={busy} onClick={() => void create()} />
       </div>
+    </div>
+    {busy && (
+      <>
+        <api.ui.Blanket visible />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 12,
+            color: palette.text,
+            pointerEvents: "none",
+          }}
+        >
+          <api.ui.Spinner size={40} />
+          <span>{busyText}</span>
+        </div>
+      </>
+    )}
     </div>
   );
 }
