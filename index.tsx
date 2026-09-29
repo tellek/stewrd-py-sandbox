@@ -30,9 +30,6 @@ export function activate(ctx: PluginContext) {
   ctx.api.statusIcon.set("idle");
 }
 
-/** TextBox is a textarea, so strip the newlines Enter or a paste would add. */
-const singleLine = (v: string) => v.replace(/[\r\n]+/g, "");
-
 /** Copied from _template/demos/TextAreaDemo.tsx: themed thin scrollbar. */
 function scrollbarStyle(palette: PluginApi["theme"]["palette"]): CSSProperties {
   return { scrollbarWidth: "thin", scrollbarColor: `${palette.border} ${palette.surface}` };
@@ -212,17 +209,12 @@ export function Component({ api }: { api: PluginApi }) {
         </div>
       ))}
 
-      <style>{".sandbox-field textarea { resize: none !important; overflow: hidden; white-space: nowrap; }"}</style>
       <h3>Create New Environment</h3>
       <div style={{ display: "grid", gridTemplateColumns: "max-content 1fr", alignItems: "center", gap: "8px 12px" }}>
         <span style={labelText}>Name:</span>
-        <div className="sandbox-field">
-          <api.ui.TextBox value={name} onChange={(v) => setName(singleLine(v))} placeholder="my-env" rows={1} />
-        </div>
+        <api.ui.TextBox value={name} onChange={setName} placeholder="my-env" singleLine />
         <span style={labelText}>Path:</span>
-        <div className="sandbox-field">
-          <api.ui.TextBox value={parent} onChange={(v) => setParent(singleLine(v))} placeholder="C:\\Projects\\envs" rows={1} />
-        </div>
+        <api.ui.TextBox value={parent} onChange={setParent} placeholder="C:\\Projects\\envs" singleLine />
         <span style={labelText}>Python Version:</span>
         <div style={{ width: "50%" }}>
           <api.ui.Dropdown
