@@ -4,3 +4,4 @@ data/
 storage.json
 .serena/
 .remember/
+*.zip
