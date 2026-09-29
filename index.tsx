@@ -40,6 +40,7 @@ export function Component({ api }: { api: PluginApi }) {
   const [version, setVersion] = useState("");
   const [packages, setPackages] = useState("");
   const [installed, setInstalled] = useState<string[]>([]);
+  const [root, setRoot] = useState("");
   const [busy, setBusy] = useState(false);
   const envsRef = useRef<Env[]>([]);
 
@@ -66,6 +67,7 @@ export function Component({ api }: { api: PluginApi }) {
   }, [api]);
 
   useEffect(() => {
+    void api.fs.getRootPath().then(setRoot);
     api.shell
       .exec("py", ["-0p"])
       .then((r) => setInstalled(r.code === 0 ? parseInstalledVersions(r.stdout) : []))
@@ -152,38 +154,41 @@ export function Component({ api }: { api: PluginApi }) {
     }
   };
 
-  const current = envs.find((e) => e.name === selected);
   const label: CSSProperties = { color: palette.textMuted, margin: "12px 0 4px" };
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: "auto", ...scrollbarStyle(palette) }}>
       <h2>Sandbox</h2>
-      {current ? (
-        <div style={{ background: palette.surface, border: `1px solid ${palette.border}`, padding: 12, marginBottom: 16 }}>
-          <h3>
-            <api.ui.StatusDot color={STATUS_COLOR[current.status]} /> {current.name}
-          </h3>
-          <p style={{ color: palette.textMuted }}>{`envs/${current.name}`}</p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <api.ui.TextButton
-              label="Open Console"
-              variant="primary"
-              disabled={busy || current.status !== "ready"}
-              onClick={() => void openConsole(current.name)}
-            />
-            <api.ui.TextButton
-              label="Delete Environment"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void remove(current.name)}
-            />
-          </div>
+      {envs.length === 0 && <p style={{ color: palette.textMuted }}>No environments yet. Create one below.</p>}
+      {envs.map((e) => (
+        <div
+          key={e.name}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: palette.surface,
+            border: `1px solid ${e.name === selected ? palette.accent : palette.border}`,
+            padding: "8px 12px",
+            marginBottom: 8,
+          }}
+        >
+          <api.ui.StatusDot color={STATUS_COLOR[e.status]} />
+          <span>{e.name}</span>
+          <span
+            style={{ color: palette.textMuted, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {root ? absEnvDir(root, e.name) : ""}
+          </span>
+          <api.ui.TextButton
+            label="Open Console"
+            variant="primary"
+            disabled={busy || e.status !== "ready"}
+            onClick={() => void openConsole(e.name)}
+          />
+          <api.ui.TextButton label="Delete" variant="secondary" disabled={busy} onClick={() => void remove(e.name)} />
         </div>
-      ) : (
-        <p style={{ color: palette.textMuted }}>
-          {envs.length === 0 ? "No environments yet. Create one below." : "Select an environment in the sidebar."}
-        </p>
-      )}
+      ))}
 
       <h3>Create New Environment</h3>
       <p style={label}>Name</p>

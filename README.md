@@ -12,7 +12,7 @@ already activated.
 - Each environment appears as a sidebar sub-item with a status dot: green is
   ready, amber is building, red is an error.
 - **Open Console** opens a separate `cmd` window with the venv activated.
-- **Delete Environment** removes the environment folder after confirmation.
+- **Delete** removes the environment folder after confirmation.
 
 Environments live in the plugin's own `data/envs/<name>/` folder.
 
