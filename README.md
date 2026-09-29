@@ -14,7 +14,7 @@ already activated.
 - **Open Console** opens a separate `cmd` window with the venv activated.
 - **Delete** removes the environment folder after confirmation.
 
-Environments live in the plugin's own `data/envs/<name>/` folder.
+Environments are created in `<Path>/<Name>`; Path defaults to the plugin's own `data/envs` folder. Creation is refused if that folder already exists.
 
 ## Development
 

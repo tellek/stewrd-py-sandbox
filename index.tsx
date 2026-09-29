@@ -3,14 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { PluginContext, PluginApi } from "stewrd-plugin-api";
 import {
-  absEnvDir,
+  absEnvsDir,
+  absRequirementsPath,
+  envDir,
+  existsCommand,
   consoleCommand,
   hasPackages,
   isValidName,
+  isValidParentPath,
   parseInstalledVersions,
   pipInstallCommand,
   reconcile,
-  relEnvsDir,
   relRequirementsPath,
   rmdirCommand,
   venvCreateCommand,
@@ -41,6 +44,7 @@ export function Component({ api }: { api: PluginApi }) {
   const [packages, setPackages] = useState("");
   const [installed, setInstalled] = useState<string[]>([]);
   const [root, setRoot] = useState("");
+  const [parent, setParent] = useState("");
   const [busy, setBusy] = useState(false);
   const envsRef = useRef<Env[]>([]);
 
@@ -55,19 +59,35 @@ export function Component({ api }: { api: PluginApi }) {
   const setStatus = (envName: string, status: EnvStatus) =>
     commit(envsRef.current.map((e) => (e.name === envName ? { ...e, status } : e)));
 
-  // Load stored envs, drop ghosts, and fail any build a crash left half-done.
+  // exec only rejects when the process can't start, so a non-zero exit is checked here.
+  const run = async (c: Command) => {
+    const r = await api.shell.exec(c.cmd, c.args);
+    if (r.code !== 0) throw new Error((r.stderr || r.stdout || `Exit code ${r.code}`).trim());
+  };
+
+  const exists = async (dir: string) => {
+    const c = existsCommand(dir);
+    return (await api.shell.exec(c.cmd, c.args)).code === 0;
+  };
+
+  // Load stored envs, drop ghosts (folders deleted by hand), and fail any build a crash left half-done.
   useEffect(() => {
     (async () => {
-      const stored = (await api.storage.get<Env[]>(STORAGE_KEY)) ?? [];
-      const dirs = (await api.fs.listDir(relEnvsDir())).filter((d) => d.isDir).map((d) => d.name);
-      commit(
-        reconcile(stored, dirs).map((e) => (e.status === "building" ? { ...e, status: "error" as const } : e)),
-      );
+      const rootPath = await api.fs.getRootPath();
+      setRoot(rootPath);
+      setParent((p) => p || absEnvsDir(rootPath));
+      // Envs saved before the Path field existed have no dir; they lived under <root>/envs.
+      const stored = ((await api.storage.get<Env[]>(STORAGE_KEY)) ?? []).map((e) => ({
+        ...e,
+        dir: e.dir ?? envDir(absEnvsDir(rootPath), e.name),
+      }));
+      const present: string[] = [];
+      for (const e of stored) if (await exists(e.dir)) present.push(e.dir);
+      commit(reconcile(stored, present).map((e) => (e.status === "building" ? { ...e, status: "error" as const } : e)));
     })().catch((err) => api.log.error(`Sandbox load failed: ${err}`));
   }, [api]);
 
   useEffect(() => {
-    void api.fs.getRootPath().then(setRoot);
     api.shell
       .exec("py", ["-0p"])
       .then((r) => setInstalled(r.code === 0 ? parseInstalledVersions(r.stdout) : []))
@@ -81,12 +101,6 @@ export function Component({ api }: { api: PluginApi }) {
     api.sidebar.setSelected(selected);
   }, [api, envs, selected]);
 
-  // exec only rejects when the process can't start, so a non-zero exit is checked here.
-  const run = async (c: Command) => {
-    const r = await api.shell.exec(c.cmd, c.args);
-    if (r.code !== 0) throw new Error((r.stderr || r.stdout || `Exit code ${r.code}`).trim());
-  };
-
   const create = async () => {
     const envName = name.trim();
     if (!isValidName(envName)) {
@@ -97,22 +111,28 @@ export function Component({ api }: { api: PluginApi }) {
       await api.modal.error({ title: "Name In Use", message: `An environment named "${envName}" already exists.` });
       return;
     }
+    if (!isValidParentPath(parent)) {
+      await api.modal.error({ title: "Invalid Path", message: "Use a full path that starts with a drive letter, such as C:\\Projects." });
+      return;
+    }
+    const dir = envDir(parent, envName);
     setBusy(true);
-    commit([...envsRef.current, { name: envName, status: "building" }]);
-    setSelected(envName);
     try {
-      const dir = absEnvDir(await api.fs.getRootPath(), envName);
+      // Never build into (and later delete) a folder that already exists.
+      if (await exists(dir)) throw new Error(`${dir} already exists.`);
+      commit([...envsRef.current, { name: envName, dir, status: "building" }]);
+      setSelected(envName);
       await run(venvCreateCommand(dir, version));
       if (hasPackages(packages)) {
         await api.fs.writeTextFile(relRequirementsPath(envName), packages);
-        await run(pipInstallCommand(dir, `${dir}\\requirements.txt`));
+        await run(pipInstallCommand(dir, absRequirementsPath(root, envName)));
       }
       setStatus(envName, "ready");
       setName("");
       setVersion("");
       setPackages("");
     } catch (err) {
-      setStatus(envName, "error");
+      if (envsRef.current.some((e) => e.name === envName)) setStatus(envName, "error");
       await api.modal.error({ title: "Create Failed", message: String(err instanceof Error ? err.message : err) });
     } finally {
       setBusy(false);
@@ -120,32 +140,31 @@ export function Component({ api }: { api: PluginApi }) {
   };
 
   // Fire-and-forget: the console outlives this call, so `done` is never awaited.
-  const openConsole = async (envName: string) => {
+  const openConsole = (env: Env) => {
     try {
-      const dir = absEnvDir(await api.fs.getRootPath(), envName);
-      const c = consoleCommand(dir);
+      const c = consoleCommand(env.dir);
       api.shell.spawn(c.cmd, c.args);
     } catch (err) {
-      await api.modal.error({ title: "Open Console Failed", message: String(err) });
+      void api.modal.error({ title: "Open Console Failed", message: String(err) });
     }
   };
 
-  const remove = async (envName: string) => {
+  const remove = async (env: Env) => {
     const ok = await api.modal.confirm({
       title: "Delete Environment",
-      message: `Delete "${envName}" and everything installed in it?`,
+      message: `Delete "${env.name}" and everything installed in it?`,
       confirmLabel: "Delete Environment",
     });
     if (!ok) return;
     setBusy(true);
     try {
-      const c = rmdirCommand(await api.fs.getRootPath(), envName);
+      const c = rmdirCommand(env.dir, env.name);
       await api.shell.exec(c.cmd, c.args);
       // rmdir /s /q can exit 0 on a partial failure, so confirm the folder is really gone.
-      if ((await api.fs.listDir(relEnvsDir())).some((d) => d.name === envName)) {
+      if (await exists(env.dir)) {
         throw new Error("The folder could not be fully removed. Close any open console using it and try again.");
       }
-      commit(envsRef.current.filter((e) => e.name !== envName));
+      commit(envsRef.current.filter((e) => e.name !== env.name));
       setSelected(null);
     } catch (err) {
       await api.modal.error({ title: "Delete Failed", message: String(err instanceof Error ? err.message : err) });
@@ -178,21 +197,23 @@ export function Component({ api }: { api: PluginApi }) {
           <span
             style={{ color: palette.textMuted, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
-            {root ? absEnvDir(root, e.name) : ""}
+            {e.dir}
           </span>
           <api.ui.TextButton
             label="Open Console"
             variant="primary"
             disabled={busy || e.status !== "ready"}
-            onClick={() => void openConsole(e.name)}
+            onClick={() => openConsole(e)}
           />
-          <api.ui.TextButton label="Delete" variant="secondary" disabled={busy} onClick={() => void remove(e.name)} />
+          <api.ui.TextButton label="Delete" variant="secondary" disabled={busy} onClick={() => void remove(e)} />
         </div>
       ))}
 
       <h3>Create New Environment</h3>
       <p style={label}>Name</p>
       <api.ui.TextBox value={name} onChange={setName} placeholder="my-env" rows={1} />
+      <p style={label}>Path</p>
+      <api.ui.TextBox value={parent} onChange={setParent} placeholder="C:\\Projects\\envs" rows={1} />
       <p style={label}>Python Version</p>
       <api.ui.Dropdown
         options={[{ label: "Default (python)", value: "" }, ...installed.map((v) => ({ label: v, value: v }))]}

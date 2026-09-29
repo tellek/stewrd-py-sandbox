@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  absEnvDir,
+  absEnvsDir,
+  absRequirementsPath,
+  envDir,
+  existsCommand,
   consoleCommand,
   hasPackages,
   isValidName,
+  isValidParentPath,
   parseInstalledVersions,
   pipInstallCommand,
   reconcile,
@@ -23,17 +27,21 @@ describe("isValidName", () => {
 });
 
 describe("paths", () => {
-  it("builds a relative requirements path for api.fs", () => {
-    expect(relRequirementsPath("demo")).toBe("envs/demo/requirements.txt");
+  it("builds a sandbox-relative and absolute requirements path", () => {
+    expect(relRequirementsPath("demo")).toBe("requirements/demo.txt");
+    expect(absRequirementsPath("C:\\data\\", "demo")).toBe("C:\\data\\requirements\\demo.txt");
   });
 
-  it("builds an absolute env dir and trims a trailing root slash", () => {
-    expect(absEnvDir("C:\\plugins\\py-sandbox\\data\\", "demo")).toBe("C:\\plugins\\py-sandbox\\data\\envs\\demo");
+  it("joins the parent path and name, trimming a trailing slash", () => {
+    expect(envDir("D:\\work\\", "demo")).toBe("D:\\work\\demo");
+    expect(absEnvsDir("C:\\data\\")).toBe("C:\\data\\envs");
   });
 
-  it("refuses a traversing name", () => {
-    expect(() => absEnvDir("C:\\data", "..")).toThrow();
-    expect(() => rmdirCommand("C:\\data", "..\\x")).toThrow();
+  it("refuses a traversing name or a bad parent", () => {
+    expect(() => envDir("C:\\data", "..")).toThrow();
+    expect(() => envDir("relative\\dir", "demo")).toThrow();
+    expect(() => envDir("C:\\a\\..\\b", "demo")).toThrow();
+    expect(() => envDir("C:\\a&calc", "demo")).toThrow();
   });
 });
 
@@ -73,17 +81,35 @@ describe("commands", () => {
   });
 
   it("builds a scoped rmdir", () => {
-    expect(rmdirCommand("C:\\data", "demo").args).toEqual(["/c", "rmdir", "/s", "/q", "C:\\data\\envs\\demo"]);
+    expect(rmdirCommand("D:\\work\\demo", "demo").args).toEqual(["/c", "rmdir", "/s", "/q", "D:\\work\\demo"]);
+  });
+
+  it("refuses to rmdir a folder that isn't the named env", () => {
+    expect(() => rmdirCommand("D:\\work", "demo")).toThrow();
+    expect(() => rmdirCommand("D:\\work\\other", "demo")).toThrow();
+    expect(() => rmdirCommand("D:\\work\\..\\demo", "demo")).toThrow();
+  });
+
+  it("checks existence with dir", () => {
+    expect(existsCommand("D:\\work\\demo").args).toEqual(["/c", "dir", "/b", "D:\\work\\demo"]);
+  });
+});
+
+describe("isValidParentPath", () => {
+  it("wants a drive-rooted path", () => {
+    expect(isValidParentPath("C:\\Users\\me\\envs")).toBe(true);
+    expect(isValidParentPath("envs")).toBe(false);
+    expect(isValidParentPath("\\\\server\\share")).toBe(false);
   });
 });
 
 describe("reconcile", () => {
   it("drops envs missing from disk and keeps the rest", () => {
     const stored = [
-      { name: "a", status: "ready" as const },
-      { name: "b", status: "error" as const },
+      { name: "a", dir: "C:\\a", status: "ready" as const },
+      { name: "b", dir: "C:\\b", status: "error" as const },
     ];
-    expect(reconcile(stored, ["b", "other"])).toEqual([{ name: "b", status: "error" }]);
+    expect(reconcile(stored, ["C:\\b", "C:\\other"])).toEqual([{ name: "b", dir: "C:\\b", status: "error" }]);
   });
 });
 

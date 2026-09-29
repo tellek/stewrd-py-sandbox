@@ -5,6 +5,7 @@ export type EnvStatus = "ready" | "building" | "error";
 
 export interface Env {
   name: string;
+  dir: string;
   status: EnvStatus;
 }
 
@@ -28,30 +29,35 @@ function assertName(name: string): void {
   if (!isValidName(name)) throw new Error(`Invalid environment name: ${name}`);
 }
 
-export function relEnvsDir(): string {
-  return "envs";
+// A drive-rooted Windows path with no traversal and no characters cmd treats specially.
+export function isValidParentPath(path: string): boolean {
+  const p = path.trim();
+  return /^[A-Za-z]:\\/.test(p) && !/["&|<>^%]/.test(p) && !p.split("\\").includes("..");
 }
 
-export function relEnvDir(name: string): string {
-  assertName(name);
-  return `envs/${name}`;
-}
-
-export function relRequirementsPath(name: string): string {
-  return `${relEnvDir(name)}/requirements.txt`;
-}
-
-function trimRoot(root: string): string {
-  return root.replace(/[\\/]+$/, "");
+function trimSlash(path: string): string {
+  return path.trim().replace(/[\\/]+$/, "");
 }
 
 export function absEnvsDir(root: string): string {
-  return `${trimRoot(root)}\\envs`;
+  return `${trimSlash(root)}\\envs`;
 }
 
-export function absEnvDir(root: string, name: string): string {
+export function envDir(parent: string, name: string): string {
   assertName(name);
-  return `${absEnvsDir(root)}\\${name}`;
+  if (!isValidParentPath(parent)) throw new Error(`Invalid path: ${parent}`);
+  return `${trimSlash(parent)}\\${name}`;
+}
+
+// The requirements file lives in the plugin's sandbox (api.fs is relative-only),
+// wherever the environment itself is created.
+export function relRequirementsPath(name: string): string {
+  assertName(name);
+  return `requirements/${name}.txt`;
+}
+
+export function absRequirementsPath(root: string, name: string): string {
+  return `${trimSlash(root)}\\${relRequirementsPath(name).replace("/", "\\")}`;
 }
 
 export function hasPackages(text: string): boolean {
@@ -84,13 +90,20 @@ export function consoleCommand(dir: string): Command {
   return { cmd: "cmd", args: ["/c", "start", "cmd", "/k", `${dir}\\Scripts\\activate.bat`] };
 }
 
-// The name is re-validated by absEnvDir, so a bad name can never widen the delete.
-export function rmdirCommand(root: string, name: string): Command {
-  return { cmd: "cmd", args: ["/c", "rmdir", "/s", "/q", absEnvDir(root, name)] };
+// `dir dir` exits non-zero when the folder is missing.
+export function existsCommand(dir: string): Command {
+  return { cmd: "cmd", args: ["/c", "dir", "/b", dir] };
+}
+
+// Only removes a folder whose last segment is the env name, so a bad path can't widen the delete.
+export function rmdirCommand(dir: string, name: string): Command {
+  assertName(name);
+  if (!isValidParentPath(dir) || !dir.endsWith(`\\${name}`)) throw new Error(`Refusing to delete ${dir}`);
+  return { cmd: "cmd", args: ["/c", "rmdir", "/s", "/q", dir] };
 }
 
 // Drops stored envs whose folder no longer exists so manual deletes leave no ghosts.
-export function reconcile(stored: Env[], dirNames: string[]): Env[] {
-  const onDisk = new Set(dirNames);
-  return stored.filter((e) => onDisk.has(e.name));
+export function reconcile(stored: Env[], existingDirs: string[]): Env[] {
+  const onDisk = new Set(existingDirs);
+  return stored.filter((e) => onDisk.has(e.dir));
 }
