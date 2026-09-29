@@ -31,8 +31,7 @@ export function activate(ctx: PluginContext) {
 }
 
 /** TextBox is a textarea, so strip the newlines Enter or a paste would add. */
-const singleLine = (v: string) => v.replace(/[
-]+/g, "");
+const singleLine = (v: string) => v.replace(/[\r\n]+/g, "");
 
 /** Copied from _template/demos/TextAreaDemo.tsx: themed thin scrollbar. */
 function scrollbarStyle(palette: PluginApi["theme"]["palette"]): CSSProperties {
