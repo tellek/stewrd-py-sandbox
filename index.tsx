@@ -119,7 +119,7 @@ export function Component({ api }: { api: PluginApi }) {
         if (r && r.code === 0) kept = reconcileDocker(kept, parseContainerNames(r.stdout));
       }
       commit(kept.map((e) => (e.status === "building" ? { ...e, status: "error" as const } : e)));
-    })().catch((err) => api.log.error(`Sandbox load failed: ${err}`));
+    })().catch((err) => api.log.error(`Py Sandbox load failed: ${err}`));
   }, [api]);
 
   useEffect(() => {
@@ -231,7 +231,7 @@ export function Component({ api }: { api: PluginApi }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: "auto", ...scrollbarStyle(palette) }}>
-      <h2>Sandbox</h2>
+      <h2>Py Sandbox</h2>
       {envs.length === 0 && <p style={{ color: palette.textMuted }}>No environments yet. Create one below.</p>}
       {envs.map((e) => (
         <div

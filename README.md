@@ -1,4 +1,4 @@
-# Sandbox
+# Py Sandbox
 
 A Stewrd plugin for isolated Python virtual environments. Create an
 environment, optionally install packages into it, and open a console with it
