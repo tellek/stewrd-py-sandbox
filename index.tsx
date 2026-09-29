@@ -173,7 +173,7 @@ export function Component({ api }: { api: PluginApi }) {
     }
   };
 
-  const label: CSSProperties = { color: palette.textMuted, margin: "12px 0 4px" };
+  const labelText: CSSProperties = { color: palette.textMuted };
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: "auto", ...scrollbarStyle(palette) }}>
@@ -210,17 +210,19 @@ export function Component({ api }: { api: PluginApi }) {
       ))}
 
       <h3>Create New Environment</h3>
-      <p style={label}>Name</p>
-      <api.ui.TextBox value={name} onChange={setName} placeholder="my-env" rows={1} />
-      <p style={label}>Path</p>
-      <api.ui.TextBox value={parent} onChange={setParent} placeholder="C:\\Projects\\envs" rows={1} />
-      <p style={label}>Python Version</p>
-      <api.ui.Dropdown
-        options={[{ label: "Default (python)", value: "" }, ...installed.map((v) => ({ label: v, value: v }))]}
-        value={version}
-        onChange={setVersion}
-      />
-      <p style={label}>Packages (requirements.txt Format)</p>
+      <div style={{ display: "grid", gridTemplateColumns: "max-content 1fr", alignItems: "center", gap: "8px 12px" }}>
+        <span style={labelText}>Name:</span>
+        <api.ui.TextBox value={name} onChange={setName} placeholder="my-env" rows={1} />
+        <span style={labelText}>Path:</span>
+        <api.ui.TextBox value={parent} onChange={setParent} placeholder="C:\\Projects\\envs" rows={1} />
+        <span style={labelText}>Python Version:</span>
+        <api.ui.Dropdown
+          options={[{ label: "Default (python)", value: "" }, ...installed.map((v) => ({ label: v, value: v }))]}
+          value={version}
+          onChange={setVersion}
+        />
+      </div>
+      <p style={{ ...labelText, margin: "16px 0 4px" }}>Packages (requirements.txt Format)</p>
       <api.ui.CodeTextArea value={packages} onChange={setPackages} language="plain" height={160} />
       <div style={{ marginTop: 12 }}>
         <api.ui.TextButton label="Create Environment" variant="primary" disabled={busy} onClick={() => void create()} />
