@@ -1,0 +1,9 @@
+{
+  "id": "py-sandbox",
+  "name": "Sandbox",
+  "icon": "default",
+  "entry": "dist/index.js",
+  "description": "Isolated Python virtual environments you can create, install into, and open a console for.",
+  "apiVersion": "1",
+  "background": false
+}
