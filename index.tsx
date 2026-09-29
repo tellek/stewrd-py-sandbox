@@ -209,18 +209,25 @@ export function Component({ api }: { api: PluginApi }) {
         </div>
       ))}
 
+      <style>{".sandbox-field textarea { resize: none; }"}</style>
       <h3>Create New Environment</h3>
       <div style={{ display: "grid", gridTemplateColumns: "max-content 1fr", alignItems: "center", gap: "8px 12px" }}>
         <span style={labelText}>Name:</span>
-        <api.ui.TextBox value={name} onChange={setName} placeholder="my-env" rows={1} />
+        <div className="sandbox-field">
+          <api.ui.TextBox value={name} onChange={setName} placeholder="my-env" rows={1} />
+        </div>
         <span style={labelText}>Path:</span>
-        <api.ui.TextBox value={parent} onChange={setParent} placeholder="C:\\Projects\\envs" rows={1} />
+        <div className="sandbox-field">
+          <api.ui.TextBox value={parent} onChange={setParent} placeholder="C:\\Projects\\envs" rows={1} />
+        </div>
         <span style={labelText}>Python Version:</span>
-        <api.ui.Dropdown
-          options={[{ label: "Default (python)", value: "" }, ...installed.map((v) => ({ label: v, value: v }))]}
-          value={version}
-          onChange={setVersion}
-        />
+        <div style={{ width: "50%" }}>
+          <api.ui.Dropdown
+            options={[{ label: "Default (python)", value: "" }, ...installed.map((v) => ({ label: v, value: v }))]}
+            value={version}
+            onChange={setVersion}
+          />
+        </div>
       </div>
       <p style={{ ...labelText, margin: "16px 0 4px" }}>Packages (requirements.txt Format)</p>
       <api.ui.CodeTextArea value={packages} onChange={setPackages} language="plain" height={160} />
