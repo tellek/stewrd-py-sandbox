@@ -14,7 +14,7 @@ export interface Command {
 }
 
 const NAME_RE = /^[A-Za-z0-9_-]+$/;
-const VERSION_RE = /^\d+(\.\d+){0,2}$/;
+const VERSION_RE = /^\d+(\.\d+){0,2}(-\d+)?$/;
 
 export function isValidName(name: string): boolean {
   return NAME_RE.test(name);
@@ -59,6 +59,12 @@ export function hasPackages(text: string): boolean {
     const t = line.trim();
     return t !== "" && !t.startsWith("#");
   });
+}
+
+// Parses `py -0p` output (" -V:3.14 *   C:\...\python.exe") into launcher tags.
+export function parseInstalledVersions(output: string): string[] {
+  const tags = [...output.matchAll(/^\s*-V:(\S+)/gm)].map((m) => m[1]);
+  return tags.filter(isValidVersion);
 }
 
 export function venvCreateCommand(dir: string, version?: string): Command {

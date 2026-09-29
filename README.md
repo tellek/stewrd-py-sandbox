@@ -7,7 +7,7 @@ already activated.
 ## Usage
 
 - **Create New Environment**: give it a name (letters, digits, `-`, `_`), an
-  optional Python version (uses the `py` launcher, e.g. `3.12`), and optional
+  Python version picked from the installed versions (detected with `py -0p`), and optional
   packages in `requirements.txt` format.
 - Each environment appears as a sidebar sub-item with a status dot: green is
   ready, amber is building, red is an error.

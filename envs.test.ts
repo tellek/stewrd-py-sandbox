@@ -4,6 +4,7 @@ import {
   consoleCommand,
   hasPackages,
   isValidName,
+  parseInstalledVersions,
   pipInstallCommand,
   reconcile,
   relRequirementsPath,
@@ -83,5 +84,20 @@ describe("reconcile", () => {
       { name: "b", status: "error" as const },
     ];
     expect(reconcile(stored, ["b", "other"])).toEqual([{ name: "b", status: "error" }]);
+  });
+});
+
+describe("parseInstalledVersions", () => {
+  it("reads launcher tags and skips non-numeric ones", () => {
+    const out = [
+      " -V:3.14 *        C:\\Py314\\python.exe",
+      " -V:3.12-32      C:\\Py312\\python.exe",
+      " -V:ContinuumAnalytics/Anaconda3  C:\\a\\python.exe",
+    ].join("\n");
+    expect(parseInstalledVersions(out)).toEqual(["3.14", "3.12-32"]);
+  });
+
+  it("returns nothing for the launcher's no-runtime message", () => {
+    expect(parseInstalledVersions("No installed Pythons found!")).toEqual([]);
   });
 });

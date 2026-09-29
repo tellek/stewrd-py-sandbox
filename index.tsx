@@ -7,6 +7,7 @@ import {
   consoleCommand,
   hasPackages,
   isValidName,
+  parseInstalledVersions,
   pipInstallCommand,
   reconcile,
   relEnvsDir,
@@ -38,6 +39,7 @@ export function Component({ api }: { api: PluginApi }) {
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
   const [packages, setPackages] = useState("");
+  const [installed, setInstalled] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const envsRef = useRef<Env[]>([]);
 
@@ -61,6 +63,13 @@ export function Component({ api }: { api: PluginApi }) {
         reconcile(stored, dirs).map((e) => (e.status === "building" ? { ...e, status: "error" as const } : e)),
       );
     })().catch((err) => api.log.error(`Sandbox load failed: ${err}`));
+  }, [api]);
+
+  useEffect(() => {
+    api.shell
+      .exec("py", ["-0p"])
+      .then((r) => setInstalled(r.code === 0 ? parseInstalledVersions(r.stdout) : []))
+      .catch(() => setInstalled([]));
   }, [api]);
 
   useEffect(() => {
@@ -179,8 +188,12 @@ export function Component({ api }: { api: PluginApi }) {
       <h3>Create New Environment</h3>
       <p style={label}>Name</p>
       <api.ui.TextBox value={name} onChange={setName} placeholder="my-env" rows={1} />
-      <p style={label}>Python Version (Optional)</p>
-      <api.ui.TextBox value={version} onChange={setVersion} placeholder="3.12" rows={1} />
+      <p style={label}>Python Version</p>
+      <api.ui.Dropdown
+        options={[{ label: "Default (python)", value: "" }, ...installed.map((v) => ({ label: v, value: v }))]}
+        value={version}
+        onChange={setVersion}
+      />
       <p style={label}>Packages (requirements.txt Format)</p>
       <api.ui.CodeTextArea value={packages} onChange={setPackages} language="plain" height={160} />
       <div style={{ marginTop: 12 }}>
