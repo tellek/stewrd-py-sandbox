@@ -188,3 +188,50 @@ export function reconcileDocker(envs: Env[], containers: string[]): Env[] {
 export function copyCommand(from: string, to: string): Command {
   return { cmd: "cmd", args: ["/c", "copy", "/y", from, to] };
 }
+
+// --- Run File ---
+const PACKAGE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+export function isValidScriptPath(file: string): boolean {
+  return isValidParentPath(file) && file.trim().toLowerCase().endsWith(".py");
+}
+
+function folderOf(file: string): string {
+  return file.slice(0, file.lastIndexOf("\\"));
+}
+
+// Maps a host path inside the env folder to its /work path, or null if it is outside the mount.
+export function containerPath(dir: string, file: string): string | null {
+  const prefix = `${dir}\\`.toLowerCase();
+  if (!file.toLowerCase().startsWith(prefix)) return null;
+  return `/work/${file.slice(prefix.length).split("\\").join("/")}`;
+}
+
+export function runFileCommand(env: Env, file: string): { command: Command; cwd?: string } {
+  const f = file.trim();
+  if (!isValidScriptPath(f)) throw new Error("Enter the full path of a .py file, such as C:\\Projects\\main.py.");
+  if (env.kind === "docker") {
+    const inside = containerPath(env.dir, f);
+    if (!inside) throw new Error(`Docker environments can only run files inside ${env.dir}.`);
+    const wd = inside.slice(0, inside.lastIndexOf("/")) || "/work";
+    return {
+      command: { cmd: "docker", args: ["exec", "-w", wd, containerName(env.name), "/work/venv/bin/python", inside] },
+    };
+  }
+  return { command: { cmd: `${env.dir}\\Scripts\\python.exe`, args: [f] }, cwd: folderOf(f) };
+}
+
+// "ModuleNotFoundError: No module named 'yaml.foo'" -> "yaml"; the top-level name is usually the pip name.
+export function parseMissingModule(stderr: string): string | null {
+  const m = /No module named '([A-Za-z0-9_.]+)'/.exec(stderr);
+  const top = m?.[1].split(".")[0];
+  return top && PACKAGE_RE.test(top) ? top : null;
+}
+
+export function installPackageCommand(env: Env, pkg: string): Command {
+  if (!PACKAGE_RE.test(pkg)) throw new Error(`Invalid package name: ${pkg}`);
+  if (env.kind === "docker") {
+    return { cmd: "docker", args: ["exec", containerName(env.name), "/work/venv/bin/pip", "install", pkg] };
+  }
+  return { cmd: `${env.dir}\\Scripts\\python.exe`, args: ["-m", "pip", "install", pkg] };
+}

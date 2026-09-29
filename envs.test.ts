@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   absEnvsDir,
+  containerPath,
+  installPackageCommand,
+  parseMissingModule,
+  runFileCommand,
   containerName,
   dockerConsoleCommand,
   dockerRunCommand,
@@ -171,5 +175,46 @@ describe("docker", () => {
       { name: "e", dir: "C:" + BS + "e", status: "ready" as const, kind: "docker" as const },
     ];
     expect(reconcileDocker(envs, ["stewrd-e"]).map((e) => e.name)).toEqual(["v", "e"]);
+  });
+});
+
+describe("run file", () => {
+  const venv = { name: "v", dir: "D:" + BS + "e" + BS + "v", status: "ready" as const };
+  const dock = { ...venv, kind: "docker" as const };
+
+  it("runs a script with the venv python in the script's folder", () => {
+    const r = runFileCommand(venv, "D:" + BS + "code" + BS + "main.py");
+    expect(r.command).toEqual({
+      cmd: venv.dir + BS + "Scripts" + BS + "python.exe",
+      args: ["D:" + BS + "code" + BS + "main.py"],
+    });
+    expect(r.cwd).toBe("D:" + BS + "code");
+  });
+
+  it("rejects non-python and relative paths", () => {
+    expect(() => runFileCommand(venv, "D:" + BS + "code" + BS + "x.txt")).toThrow();
+    expect(() => runFileCommand(venv, "main.py")).toThrow();
+  });
+
+  it("maps a file under the env folder into /work for docker", () => {
+    expect(containerPath(dock.dir, dock.dir + BS + "src" + BS + "a.py")).toBe("/work/src/a.py");
+    expect(runFileCommand(dock, dock.dir + BS + "src" + BS + "a.py").command.args).toEqual([
+      "exec", "-w", "/work/src", "stewrd-v", "/work/venv/bin/python", "/work/src/a.py",
+    ]);
+  });
+
+  it("refuses docker files outside the mounted folder", () => {
+    expect(() => runFileCommand(dock, "D:" + BS + "other" + BS + "a.py")).toThrow();
+  });
+
+  it("finds the missing top-level module", () => {
+    expect(parseMissingModule("ModuleNotFoundError: No module named 'yaml.foo'")).toBe("yaml");
+    expect(parseMissingModule("SyntaxError")).toBeNull();
+  });
+
+  it("installs a package with the right tool per kind", () => {
+    expect(installPackageCommand(venv, "six").args).toEqual(["-m", "pip", "install", "six"]);
+    expect(installPackageCommand(dock, "six").cmd).toBe("docker");
+    expect(() => installPackageCommand(venv, "six; calc")).toThrow();
   });
 });

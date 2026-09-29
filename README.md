@@ -16,6 +16,14 @@ already activated.
 
 Environments are created in `<Path>/<Name>`; Path defaults to the plugin's own `data/envs` folder. Creation is refused if that folder already exists.
 
+## Run File
+
+Pick an environment, enter the full path of a `.py` file, and click **Run
+File**; stdout and stderr appear below. Venv environments run the file with
+their own Python. Docker environments can only run files inside their own
+folder (the mounted `/work`). If the run fails with `No module named 'x'`, the
+plugin offers to install `x` into the environment and runs the file again once.
+
 ## Docker Kind
 
 Pick **Docker** as the kind to run the environment in a container (needs Docker
@@ -38,4 +46,4 @@ npm run build
 
 ## Not Yet Built
 
-An embedded terminal, Run File, and requirements auto-detect are deferred.
+An embedded terminal is deferred.

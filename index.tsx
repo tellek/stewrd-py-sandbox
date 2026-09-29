@@ -18,9 +18,11 @@ import {
   dockerStopCommand,
   dockerVenvCommand,
   copyCommand,
+  installPackageCommand,
   isValidImage,
   mkdirCommand,
   parseContainerNames,
+  parseMissingModule,
   reconcileDocker,
   hasPackages,
   isValidName,
@@ -30,6 +32,7 @@ import {
   reconcile,
   relRequirementsPath,
   rmdirCommand,
+  runFileCommand,
   venvCreateCommand,
   type Command,
   type Env,
@@ -76,6 +79,9 @@ export function Component({ api }: { api: PluginApi }) {
   // Non-null while a create or delete runs; the text is shown over a darkened pane.
   const [busyText, setBusyText] = useState<string | null>(null);
   const busy = busyText !== null;
+  const [runEnv, setRunEnv] = useState("");
+  const [runFile, setRunFile] = useState("");
+  const [output, setOutput] = useState("");
   const envsRef = useRef<Env[]>([]);
 
   useEffect(() => api.theme.subscribe(setPalette), [api]);
@@ -229,6 +235,37 @@ export function Component({ api }: { api: PluginApi }) {
     }
   };
 
+  // Runs the file; on a missing module, offers to install it and reruns once.
+  const runScript = async (allowInstall = true): Promise<void> => {
+    const env = envsRef.current.find((e) => e.name === (runEnv || envsRef.current[0]?.name));
+    if (!env) return;
+    setBusyText("Running File, Please Wait...");
+    try {
+      const { command, cwd } = runFileCommand(env, runFile);
+      if (env.kind === "docker") await run(dockerStartCommand(env.name));
+      const r = await api.shell.exec(command.cmd, command.args, cwd ? { cwd } : undefined);
+      setOutput(`${r.stdout}${r.stderr}${r.code === 0 ? "" : `\n[Exit code ${r.code}]`}`);
+      const missing = r.code !== 0 && allowInstall ? parseMissingModule(r.stderr) : null;
+      if (missing) {
+        setBusyText(null);
+        const ok = await api.modal.confirm({
+          title: "Install Missing Package",
+          message: `The file needs "${missing}". Install it into "${env.name}" and run again?`,
+          confirmLabel: "Install And Run",
+        });
+        if (ok) {
+          setBusyText(`Installing ${missing}, Please Wait...`);
+          await run(installPackageCommand(env, missing));
+          return await runScript(false);
+        }
+      }
+    } catch (err) {
+      await api.modal.error({ title: "Run Failed", message: String(err instanceof Error ? err.message : err) });
+    } finally {
+      setBusyText(null);
+    }
+  };
+
   const labelText: CSSProperties = { color: palette.textMuted };
 
   return (
@@ -264,6 +301,28 @@ export function Component({ api }: { api: PluginApi }) {
           <api.ui.TextButton label="Delete" variant="secondary" disabled={busy} onClick={() => void remove(e)} />
         </div>
       ))}
+
+      {envs.length > 0 && (
+        <>
+          <h3>Run File</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "max-content 1fr", alignItems: "center", gap: "8px 12px" }}>
+            <span style={labelText}>Environment:</span>
+            <div style={{ width: "50%" }}>
+              <api.ui.Dropdown
+                options={envs.map((e) => ({ label: e.name, value: e.name }))}
+                value={envs.some((e) => e.name === runEnv) ? runEnv : envs[0].name}
+                onChange={setRunEnv}
+              />
+            </div>
+            <span style={labelText}>File:</span>
+            <api.ui.TextBox value={runFile} onChange={setRunFile} placeholder="C:\\Projects\\main.py" singleLine />
+          </div>
+          <div style={{ margin: "12px 0" }}>
+            <api.ui.TextButton label="Run File" variant="primary" disabled={busy || !runFile.trim()} onClick={() => void runScript()} />
+          </div>
+          {output && <api.ui.CodeTextArea value={output} onChange={() => {}} language="plain" height={160} readOnly />}
+        </>
+      )}
 
       <h3>Create New Environment</h3>
       <div style={{ display: "grid", gridTemplateColumns: "max-content 1fr", alignItems: "center", gap: "8px 12px" }}>
