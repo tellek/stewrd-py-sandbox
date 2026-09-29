@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   absEnvsDir,
+  containerName,
+  dockerConsoleCommand,
+  dockerRunCommand,
+  isValidImage,
+  parseContainerNames,
+  reconcileDocker,
   absRequirementsPath,
   envDir,
   existsCommand,
@@ -125,5 +131,45 @@ describe("parseInstalledVersions", () => {
 
   it("returns nothing for the launcher's no-runtime message", () => {
     expect(parseInstalledVersions("No installed Pythons found!")).toEqual([]);
+  });
+});
+
+const BS = String.fromCharCode(92);
+
+describe("docker", () => {
+  it("names containers from the env name", () => {
+    expect(containerName("demo")).toBe("stewrd-demo");
+    expect(() => containerName("a b")).toThrow();
+  });
+
+  it("validates images", () => {
+    expect(isValidImage("python:3.12-slim")).toBe(true);
+    expect(isValidImage("ghcr.io/org/img:1.0")).toBe(true);
+    expect(isValidImage("py; rm -rf /")).toBe(false);
+    expect(isValidImage("-v")).toBe(false);
+  });
+
+  it("mounts the env folder and can cut the network", () => {
+    const on = dockerRunCommand("demo", "D:" + BS + "work" + BS + "demo", "python:3.12", true).args;
+    expect(on).toContain("D:" + BS + "work" + BS + "demo:/work");
+    expect(on).not.toContain("--network");
+    expect(dockerRunCommand("demo", "D:" + BS + "w", "python:3.12", false).args).toContain("none");
+  });
+
+  it("opens bash inside the container", () => {
+    expect(dockerConsoleCommand("demo").args).toContain("stewrd-demo");
+  });
+
+  it("parses docker ps output", () => {
+    expect(parseContainerNames("a" + String.fromCharCode(13, 10) + "b" + String.fromCharCode(10))).toEqual(["a", "b"]);
+  });
+
+  it("drops docker envs with no container but keeps venvs", () => {
+    const envs = [
+      { name: "v", dir: "C:" + BS + "v", status: "ready" as const },
+      { name: "d", dir: "C:" + BS + "d", status: "ready" as const, kind: "docker" as const },
+      { name: "e", dir: "C:" + BS + "e", status: "ready" as const, kind: "docker" as const },
+    ];
+    expect(reconcileDocker(envs, ["stewrd-e"]).map((e) => e.name)).toEqual(["v", "e"]);
   });
 });

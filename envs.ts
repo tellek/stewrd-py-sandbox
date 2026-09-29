@@ -3,10 +3,15 @@
 // absolute ones, hence the two path builders.
 export type EnvStatus = "ready" | "building" | "error";
 
+export type EnvKind = "venv" | "docker";
+
 export interface Env {
   name: string;
   dir: string;
   status: EnvStatus;
+  /** Missing on envs saved before Docker support, which are venvs. */
+  kind?: EnvKind;
+  image?: string;
 }
 
 export interface Command {
@@ -106,4 +111,80 @@ export function rmdirCommand(dir: string, name: string): Command {
 export function reconcile(stored: Env[], existingDirs: string[]): Env[] {
   const onDisk = new Set(existingDirs);
   return stored.filter((e) => onDisk.has(e.dir));
+}
+
+// --- Docker kind: the env folder is mounted at /work and holds the venv at /work/venv. ---
+export const DEFAULT_IMAGE = "python:3.12-slim";
+
+const IMAGE_RE = /^[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]+)?$/;
+
+export function isValidImage(image: string): boolean {
+  return IMAGE_RE.test(image);
+}
+
+export function containerName(name: string): string {
+  assertName(name);
+  return `stewrd-${name}`;
+}
+
+export function dockerRunCommand(name: string, dir: string, image: string, allowNetwork: boolean): Command {
+  if (!isValidImage(image)) throw new Error(`Invalid Docker image: ${image}`);
+  const args = ["run", "-d", "--name", containerName(name), "-v", `${dir}:/work`, "-w", "/work"];
+  if (!allowNetwork) args.push("--network", "none");
+  return { cmd: "docker", args: [...args, image, "sleep", "infinity"] };
+}
+
+export function dockerVenvCommand(name: string): Command {
+  return { cmd: "docker", args: ["exec", containerName(name), "python", "-m", "venv", "/work/venv"] };
+}
+
+export function dockerPipCommand(name: string): Command {
+  return {
+    cmd: "docker",
+    args: ["exec", containerName(name), "/work/venv/bin/pip", "install", "-r", "/work/requirements.txt"],
+  };
+}
+
+export function dockerStartCommand(name: string): Command {
+  return { cmd: "docker", args: ["start", containerName(name)] };
+}
+
+export function dockerStopCommand(name: string): Command {
+  return { cmd: "docker", args: ["stop", containerName(name)] };
+}
+
+export function dockerRemoveCommand(name: string): Command {
+  return { cmd: "docker", args: ["rm", "-f", containerName(name)] };
+}
+
+// Opens bash with the venv on PATH so `python` and `pip` resolve to it.
+export function dockerConsoleCommand(name: string): Command {
+  return {
+    cmd: "cmd",
+    args: ["/c", "start", "cmd", "/k", "docker", "exec", "-it", "-e", "VIRTUAL_ENV=/work/venv",
+      "-e", "PATH=/work/venv/bin:/usr/local/bin:/usr/bin:/bin", containerName(name), "bash"],
+  };
+}
+
+export function mkdirCommand(dir: string): Command {
+  return { cmd: "cmd", args: ["/c", "mkdir", dir] };
+}
+
+export function dockerListCommand(): Command {
+  return { cmd: "docker", args: ["ps", "-a", "--format", "{{.Names}}"] };
+}
+
+export function parseContainerNames(output: string): string[] {
+  return output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+}
+
+// Drops docker envs whose container is gone (removed outside the plugin).
+export function reconcileDocker(envs: Env[], containers: string[]): Env[] {
+  const have = new Set(containers);
+  return envs.filter((e) => e.kind !== "docker" || have.has(containerName(e.name)));
+}
+
+// Copies the requirements file (kept in the plugin's sandbox) into the mounted env folder.
+export function copyCommand(from: string, to: string): Command {
+  return { cmd: "cmd", args: ["/c", "copy", "/y", from, to] };
 }

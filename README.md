@@ -16,6 +16,15 @@ already activated.
 
 Environments are created in `<Path>/<Name>`; Path defaults to the plugin's own `data/envs` folder. Creation is refused if that folder already exists.
 
+## Docker Kind
+
+Pick **Docker** as the kind to run the environment in a container (needs Docker
+Desktop running). The env folder is mounted at `/work`, the venv lives at
+`/work/venv`, and **Open Console** starts the container and opens `bash` in it.
+Untick **Allow Network** to run with `--network none` (packages then can't be
+installed). Containers are stopped when the plugin unloads and removed on
+**Delete**.
+
 ## Development
 
 ```sh
@@ -29,4 +38,4 @@ npm run build
 
 ## Not Yet Built
 
-Docker-backed environments and an embedded terminal are deferred.
+An embedded terminal, Run File, and requirements auto-detect are deferred.
